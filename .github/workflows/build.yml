@@ -8,7 +8,7 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      date_id: ${{ steps.date_id.outputs.value }}
+      date_id: ${{ steps.date_id.outputs.date_id }}
     steps:
       - name: Get latest Void Linux release date
         run: |
@@ -18,7 +18,7 @@ jobs:
           grep -o '[0-9]\{8\}' > date_id
       - name: Set date output
         id: date_id
-        run: echo "value=$(cat date_id)" >> $GITHUB_OUTPUT
+        run: echo "date_id=$(cat date_id)" >> $GITHUB_OUTPUT
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v3
       - name: Setup Docker Buildx
