@@ -5,29 +5,7 @@ on:
   workflow_dispatch:      # Allow manual triggering
 
 jobs:
-  prepare:
-    runs-on: ubuntu-latest
-    outputs:
-      date_id: ${{ steps.date_id.outputs.date_id }}
-    steps:
-      - name: Get latest Void Linux release date
-        run: |
-          curl -s https://repo-default.voidlinux.org/live/current/ | 
-          grep -o 'void-.*-ROOTFS-[0-9]*.tar.xz' | 
-          head -n 1 | 
-          grep -o '[0-9]\{8\}' > date_id
-      - name: Set date output
-        id: date_id
-        run: echo "date_id=$(cat date_id)" >> $GITHUB_OUTPUT
-      - name: Setup QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          platforms: linux/amd64,linux/386,linux/arm64,linux/arm/v7,linux/arm/v6
-
   build-standard:
-    needs: prepare
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -66,13 +44,12 @@ jobs:
           build-args: |
             LIBC=${{ matrix.libc }}
             VARIANT=standard
-            DATESTAMP=${{ needs.prepare.outputs.date_id }}
+            DATESTAMP=20250202
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.platform.tag }}-${{ matrix.libc }}-${{ needs.prepare.outputs.date_id }}
+            ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.platform.tag }}-${{ matrix.libc }}-20250202
             ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.platform.tag }}-${{ matrix.libc }}-latest
 
   build-rpi:
-    needs: prepare
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -107,13 +84,13 @@ jobs:
           build-args: |
             LIBC=${{ matrix.libc }}
             VARIANT=rpi
-            DATESTAMP=${{ needs.prepare.outputs.date_id }}
+            DATESTAMP=20250202
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/void:rpi-${{ matrix.platform.tag }}-${{ matrix.libc }}-${{ needs.prepare.outputs.date_id }}
+            ${{ secrets.DOCKER_USERNAME }}/void:rpi-${{ matrix.platform.tag }}-${{ matrix.libc }}-20250202
             ${{ secrets.DOCKER_USERNAME }}/void:rpi-${{ matrix.platform.tag }}-${{ matrix.libc }}-latest
 
   build-multi-arch:
-    needs: [prepare, build-standard, build-rpi]
+    needs: [build-standard, build-rpi]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -147,8 +124,8 @@ jobs:
           build-args: |
             LIBC=${{ matrix.config.libc }}
             VARIANT=${{ matrix.config.variant || 'standard' }}
-            DATESTAMP=${{ needs.prepare.outputs.date_id }}
+            DATESTAMP=20250202
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.config.tag }}-${{ needs.prepare.outputs.date_id }}
+            ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.config.tag }}-20250202
             ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.config.tag }}-latest
     
