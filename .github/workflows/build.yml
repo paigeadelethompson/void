@@ -1,78 +1,154 @@
 name: "Void Linux"
 on:
   schedule:
-    - cron: "0 13 * * 1"
-  workflow_dispatch:
+    - cron: "0 13 * * 1"  # Run every Monday at 13:00 UTC
+  workflow_dispatch:      # Allow manual triggering
+
 jobs:
-  build:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      date_id: ${{ steps.date_id.outputs.value }}
+    steps:
+      - name: Get latest Void Linux release date
+        run: |
+          curl -s https://repo-default.voidlinux.org/live/current/ | 
+          grep -o 'void-.*-ROOTFS-[0-9]*.tar.xz' | 
+          head -n 1 | 
+          grep -o '[0-9]\{8\}' > date_id
+      - name: Set date output
+        id: date_id
+        run: echo "value=$(cat date_id)" >> $GITHUB_OUTPUT
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/386,linux/arm64,linux/arm/v7,linux/arm/v6
+
+  build-standard:
+    needs: prepare
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: ["aarch64-musl", "armv6l-musl", "armv7l-musl", "x86_64-musl", "aarch64-glibc", "armv6l-glibc", "armv7l-glibc", "x86_64-glibc", "i686-glibc"]
-    permissions:
-      contents: write
-      pull-requests: read
-    runs-on: ubuntu-latest
+        libc: [glibc, musl]
+        platform:
+          - { arch: linux/amd64, tag: x86_64 }
+          - { arch: linux/arm64, tag: aarch64 }
+          - { arch: linux/arm/v7, tag: armv7l }
+          - { arch: linux/arm/v6, tag: armv6l }
+        include:
+          - libc: glibc
+            platform: { arch: linux/386, tag: i686 }
+      fail-fast: false
     steps:
-    - uses: actions/checkout@v3
-      with:
-        submodules: true
-    - name: get date tag
-      run: curl https://repo-default.voidlinux.org/live/current/ | tr '"' ' '  | grep href | awk '{print $3}' | tr '-' ' ' | awk '{print $NF}' | grep ".xz" | tr '.' ' ' | awk '{print $1}' | head -n 1 > date_id
-    - name: Get date tag
-      id: date_id
-      run: echo "date_id=$(cat date_id)" >> $GITHUB_ENV
-    - if: matrix.arch == 'aarch64-musl' 
-      name: create docker image
-      run: |
-        docker import --platform "linux/arm64" --change 'CMD /bin/bash' https://repo-default.voidlinux.org/live/current/void-${{ matrix.arch }}-ROOTFS-${{ env.date_id }}.tar.xz ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }}
-        docker tag ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }} ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-latest
-    - if: matrix.arch == 'armv7l-musl' 
-      name: create docker image
-      run: |
-        docker import --platform "linux/arm/v7" --change 'CMD /bin/bash' https://repo-default.voidlinux.org/live/current/void-${{ matrix.arch }}-ROOTFS-${{ env.date_id }}.tar.xz ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }}
-        docker tag ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }} ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-latest
-    - if: matrix.arch == 'x86_64-musl' 
-      name: create docker image
-      run: |
-        docker import --platform "linux/amd64" --change 'CMD /bin/bash' https://repo-default.voidlinux.org/live/current/void-${{ matrix.arch }}-ROOTFS-${{ env.date_id }}.tar.xz ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }}
-        docker tag ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }} ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-latest
-    - if: matrix.arch == 'armv6l-musl' 
-      name: create docker image
-      run: |
-        docker import --platform "linux/arm/v6" --change 'CMD /bin/bash' https://repo-default.voidlinux.org/live/current/void-${{ matrix.arch }}-ROOTFS-${{ env.date_id }}.tar.xz ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }}
-        docker tag ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }} ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-latest
-    - if: matrix.arch == 'aarch64-glibc'
-      name: create docker image
-      run: |
-        docker import --platform "linux/arm64" --change 'CMD /bin/bash' https://repo-default.voidlinux.org/live/current/void-aarch64-ROOTFS-${{ env.date_id }}.tar.xz ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }}
-        docker tag ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }} ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-latest
-    - if: matrix.arch == 'x86_64-glibc'
-      name: create docker image
-      run: |
-        docker import --platform "linux/amd64" --change 'CMD /bin/bash' https://repo-default.voidlinux.org/live/current/void-x86_64-ROOTFS-${{ env.date_id }}.tar.xz ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }}
-        docker tag ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }} ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-latest
-    - if: matrix.arch == 'armv7l-glibc'
-      name: create docker image
-      run: |
-        docker import --platform "linux/arm/v7" --change 'CMD /bin/bash' https://repo-default.voidlinux.org/live/current/void-armv7l-ROOTFS-${{ env.date_id }}.tar.xz ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }}
-        docker tag ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }} ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-latest
-    - if: matrix.arch == 'i686-glibc'
-      name: create docker image
-      run: |
-        docker import --platform "linux/i386" --change 'CMD /bin/bash' https://repo-default.voidlinux.org/live/current/void-i686-ROOTFS-${{ env.date_id }}.tar.xz ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }}
-        docker tag ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }} ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-latest
-    - if: matrix.arch == 'armv6l-glibc'
-      name: create docker image
-      run: |
-        docker import --platform "linux/arm/v6" --change 'CMD /bin/bash' https://repo-default.voidlinux.org/live/current/void-armv6l-ROOTFS-${{ env.date_id }}.tar.xz ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }}
-        docker tag ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }} ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-latest
-    - name: Log in to Docker Hub
-      uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-    - name: push to docker (dated)
-      run: docker push ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-${{ env.date_id }}
-    - name: push to docker (latest)
-      run: docker push ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.arch }}-latest
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Build and push Void Linux image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ matrix.platform.arch }}
+          push: true
+          build-args: |
+            LIBC=${{ matrix.libc }}
+            VARIANT=standard
+            DATESTAMP=${{ needs.prepare.outputs.date_id }}
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.platform.tag }}-${{ matrix.libc }}-${{ needs.prepare.outputs.date_id }}
+            ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.platform.tag }}-${{ matrix.libc }}-latest
+
+  build-rpi:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        libc: [glibc, musl]
+        platform:
+          - { arch: linux/arm64, tag: aarch64 }
+          - { arch: linux/arm/v7, tag: armv7l }
+          - { arch: linux/arm/v6, tag: armv6l }
+      fail-fast: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Build and push Void Linux Raspberry Pi image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ matrix.platform.arch }}
+          push: true
+          build-args: |
+            LIBC=${{ matrix.libc }}
+            VARIANT=rpi
+            DATESTAMP=${{ needs.prepare.outputs.date_id }}
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/void:rpi-${{ matrix.platform.tag }}-${{ matrix.libc }}-${{ needs.prepare.outputs.date_id }}
+            ${{ secrets.DOCKER_USERNAME }}/void:rpi-${{ matrix.platform.tag }}-${{ matrix.libc }}-latest
+
+  build-multi-arch:
+    needs: [prepare, build-standard, build-rpi]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        config:
+          - { libc: glibc, platforms: "linux/amd64,linux/386,linux/arm64,linux/arm/v7,linux/arm/v6", tag: glibc }
+          - { libc: musl, platforms: "linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v6", tag: musl }
+          - { libc: glibc, variant: rpi, platforms: "linux/arm64,linux/arm/v7,linux/arm/v6", tag: rpi-glibc }
+          - { libc: musl, variant: rpi, platforms: "linux/arm64,linux/arm/v7,linux/arm/v6", tag: rpi-musl }
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Build and push multi-arch image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ matrix.config.platforms }}
+          push: true
+          build-args: |
+            LIBC=${{ matrix.config.libc }}
+            VARIANT=${{ matrix.config.variant || 'standard' }}
+            DATESTAMP=${{ needs.prepare.outputs.date_id }}
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.config.tag }}-${{ needs.prepare.outputs.date_id }}
+            ${{ secrets.DOCKER_USERNAME }}/void:${{ matrix.config.tag }}-latest
     
